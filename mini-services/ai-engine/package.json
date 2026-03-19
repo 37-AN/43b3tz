@@ -1,0 +1,17 @@
+{
+  "name": "43v3r-ai-engine",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Ensemble Model AI Engine for Sports Betting Predictions",
+  "scripts": {
+    "dev": "bun --hot index.ts",
+    "start": "bun index.ts",
+    "db:generate": "bunx prisma generate",
+    "db:push": "bunx prisma db push",
+    "db:studio": "bunx prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "prisma": "^6.1.0"
+  }
+}

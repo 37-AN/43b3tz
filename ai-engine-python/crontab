@@ -1,0 +1,6 @@
+# Run the AI Engine every 6 hours
+0 */6 * * * /usr/local/bin/python /app/main.py >> /var/log/cron.log 2>&1
+# Run the Match Scaper every 4 hours
+0 */4 * * * /usr/local/bin/python /app/pipeline/ingest_matches.py >> /var/log/cron.log 2>&1
+# Run the Odds Scraper every 2 hours
+0 */2 * * * /usr/local/bin/python /app/pipeline/ingest_odds.py >> /var/log/cron.log 2>&1

@@ -1,0 +1,897 @@
+// 43V3R BET AI - Comprehensive Sports Betting Intelligence Platform
+// Database Schema - PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USER SYSTEM ====================
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String   @unique
+  passwordHash  String
+  name          String?
+  avatar        String?
+  role          String   @default("user") // user, tipster, admin
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Wallet
+  wallet        Wallet?
+  
+  // Tipster Profile (if role is tipster)
+  tipsterProfile Tipster?
+  
+  // Relationships
+  bets          Bet[]
+  predictions   Prediction[]
+  subscriptions Subscription[]  @relation("UserSubscriptions")
+  followers     Follow[]        @relation("UserFollowers")
+  following     Follow[]        @relation("UserFollowing")
+  likes         Like[]
+  comments      Comment[]
+  transactions  Transaction[]
+  copySettings  CopyBetSetting?
+  apiKeys       APIKey[]
+  payments      Payment[]
+  referralsMade Referral[]      @relation("Referrer")
+  referredBy    Referral?       @relation("Referred")
+  
+  // Fantasy Teams
+  fantasyTeams  FantasyTeam[]
+  leagueMembers FantasyLeagueMember[]
+  
+  @@index([email])
+  @@index([username])
+  @@index([role])
+  @@map("users")
+}
+
+model Wallet {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  balance         Float    @default(0)
+  virtualBalance  Float    @default(1000) // For simulation mode
+  totalProfit     Float    @default(0)
+  totalBets       Int      @default(0)
+  winRate         Float    @default(0)
+  roi             Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("wallets")
+}
+
+// ==================== MATCHES & ODDS ====================
+
+model League {
+  id          String   @id @default(cuid())
+  name        String
+  country     String
+  logo        String?
+  isActive    Boolean  @default(true)
+  matches     Match[]
+  createdAt   DateTime @default(now())
+  
+  @@index([country])
+  @@index([isActive])
+  @@map("leagues")
+}
+
+model Team {
+  id            String   @id @default(cuid())
+  name          String
+  logo          String?
+  country       String?
+  leagueId      String?
+  form          String?  // e.g., "WWLDW"
+  goalsScored   Int      @default(0)
+  goalsConceded Int      @default(0)
+  createdAt     DateTime @default(now())
+  
+  homeMatches Match[]  @relation("HomeTeam")
+  awayMatches Match[]  @relation("AwayTeam")
+  players     Player[]
+  
+  @@index([name])
+  @@index([leagueId])
+  @@map("teams")
+}
+
+model Match {
+  id              String      @id @default(cuid())
+  leagueId        String
+  league          League      @relation(fields: [leagueId], references: [id])
+  homeTeamId      String
+  homeTeam        Team        @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId      String
+  awayTeam        Team        @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  kickoffTime     DateTime
+  status          String      @default("scheduled") // scheduled, live, finished, postponed
+  homeScore       Int?
+  awayScore       Int?
+  minute          Int?        // For live matches
+  
+  // Odds
+  odds           Odds?
+  
+  // AI Predictions
+  predictions    Prediction[]
+  
+  // Bets
+  bets           Bet[]
+  
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  
+  @@index([kickoffTime])
+  @@index([status])
+  @@index([leagueId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@map("matches")
+}
+
+model Odds {
+  id              String   @id @default(cuid())
+  matchId         String   @unique
+  match           Match    @relation(fields: [matchId], references: [id])
+  
+  // 1X2 Odds
+  homeWin         Float    // Odds for home win
+  draw            Float    // Odds for draw
+  awayWin         Float    // Odds for away win
+  
+  // Over/Under 2.5
+  over25          Float?
+  under25         Float?
+  
+  // Both Teams to Score
+  bttsYes         Float?
+  bttsNo          Float?
+  
+  // Double Chance
+  homeDraw        Float?
+  homeAway        Float?
+  drawAway        Float?
+  
+  // Bookmaker info
+  bookmaker       String   @default("aggregate")
+  
+  // Odds movement tracking
+  homeWinOpen     Float?
+  drawOpen        Float?
+  awayWinOpen     Float?
+  
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  
+  @@index([matchId])
+  @@map("odds")
+}
+
+model OddsHistory {
+  id          String   @id @default(cuid())
+  matchId     String
+  homeWin     Float
+  draw        Float
+  awayWin     Float
+  bookmaker   String
+  recordedAt  DateTime @default(now())
+  
+  @@index([matchId, recordedAt])
+  @@map("odds_history")
+}
+
+// ==================== AI PREDICTION SYSTEM ====================
+
+model Prediction {
+  id              String   @id @default(cuid())
+  matchId         String
+  match           Match    @relation(fields: [matchId], references: [id])
+  userId          String?  // null for AI predictions
+  user            User?    @relation(fields: [userId], references: [id])
+  
+  // AI Model Predictions
+  homeWinProb     Float    // AI predicted probability
+  drawProb        Float
+  awayWinProb     Float
+  
+  // Predicted outcome
+  prediction      String   // home, draw, away
+  confidence      Float    // 0-100
+  
+  // Value Bet Analysis
+  isValueBet      Boolean  @default(false)
+  edge            Float    @default(0) // AI_prob - implied_prob
+  kellyFraction   Float    @default(0) // Recommended bet size
+  
+  // Outcome tracking
+  result          String?  // win, loss, pending
+  settledAt       DateTime?
+  
+  // Premium/Lock
+  isPremium       Boolean  @default(false)
+  price           Float?   // Price for premium prediction
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([matchId])
+  @@index([isValueBet])
+  @@index([userId])
+  @@index([result])
+  @@map("predictions")
+}
+
+// ==================== TIPSTER MARKETPLACE ====================
+
+model Tipster {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  
+  // Profile
+  displayName     String
+  bio             String?
+  avatar          String?
+  isVerified      Boolean  @default(false)
+  isFeatured      Boolean  @default(false)
+  
+  // Stats
+  totalTips       Int      @default(0)
+  wins            Int      @default(0)
+  losses          Int      @default(0)
+  roi             Float    @default(0)
+  yield           Float    @default(0)
+  winRate         Float    @default(0)
+  avgOdds         Float    @default(0)
+  profit          Float    @default(0)
+  
+  // Subscription pricing
+  monthlyPrice    Float    @default(0)
+  weeklyPrice     Float    @default(0)
+  singleTipPrice  Float    @default(0)
+  
+  // Followers
+  followersCount  Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  subscriptions   Subscription[]
+  tips            Tip[]
+  
+  @@index([isVerified])
+  @@index([isFeatured])
+  @@index([winRate])
+  @@index([roi])
+  @@map("tipsters")
+}
+
+model Tip {
+  id              String      @id @default(cuid())
+  tipsterId       String
+  tipster         Tipster     @relation(fields: [tipsterId], references: [id])
+  matchId         String
+  prediction      String      // home, draw, away, over25, under25, btts_yes, btts_no
+  odds            Float
+  stake           Float       @default(1) // 1-10 confidence
+  reasoning       String?
+  isPremium       Boolean     @default(false)
+  isFree          Boolean     @default(false)
+  result          String?     // win, loss, void, pending
+  settledAt       DateTime?
+  createdAt       DateTime    @default(now())
+  
+  likes           Like[]
+  comments        Comment[]
+  
+  @@index([tipsterId])
+  @@index([matchId])
+  @@index([result])
+  @@index([createdAt])
+  @@map("tips")
+}
+
+model Subscription {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation("UserSubscriptions", fields: [userId], references: [id])
+  tipsterId       String?
+  tipster         Tipster? @relation(fields: [tipsterId], references: [id])
+  
+  // Subscription type - tipster, premium, fantasy_pro
+  type            String   // weekly, monthly, yearly, lifetime
+  tier            String   @default("free") // free, pro, premium
+  
+  status          String   @default("active") // active, cancelled, expired, pending_payment
+  startDate       DateTime @default(now())
+  endDate         DateTime
+  
+  // Pricing - keeping both for backwards compatibility
+  price           Float    @default(0)    // Legacy field
+  amount          Float    @default(0)    // New field
+  currency        String   @default("ZAR")
+  
+  // Payment info
+  paymentMethod   String?  // payfast, ozow, crypto, internal
+  externalRef     String?  // Payment provider reference
+  paymentId       String?  // Link to Payment model
+  autoRenew       Boolean  @default(true)
+  
+  // Content access
+  contentAccess   String   @default("basic") // basic, pro, premium, full
+  
+  // Features enabled
+  features        String?  // JSON string of enabled features
+  
+  // Legacy field for backwards compatibility
+  isActive        Boolean  @default(true)
+  
+  // Trial period
+  trialStart      DateTime?
+  trialEnd        DateTime?
+  isTrialActive   Boolean  @default(false)
+  
+  // Discount/coupon
+  discountCode    String?
+  discountPercent Float?
+  
+  // Notification flags
+  expiryNotified  Boolean  @default(false)
+  renewalNotified Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([tipsterId])
+  @@index([status])
+  @@index([endDate])
+  @@index([tier])
+  @@map("subscriptions")
+}
+
+model CopyBetSetting {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  tipsterId       String
+  
+  // Stake management
+  stakeMultiplier Float    @default(1)    // Multiply tipster's stake
+  maxStake        Float    @default(100)  // Maximum stake per bet
+  minStake        Float    @default(10)   // Minimum stake per bet
+  fixedStake      Float?   // Use fixed stake instead of multiplier
+  
+  // Risk management
+  maxDailySpend   Float    @default(500)  // Maximum daily spend
+  maxOdds         Float    @default(10)   // Maximum odds to copy
+  minOdds         Float    @default(1.2)  // Minimum odds to copy
+  stopLoss        Float?   // Stop copying after this loss amount
+  
+  // Bet type filters
+  allowedBetTypes String?  // JSON array: ["1X2", "O/U", "BTTS"]
+  allowedLeagues  String?  // JSON array of allowed league IDs
+  
+  // Schedule
+  activeHours     String?  // JSON: {"start": "09:00", "end": "22:00"}
+  
+  // Status
+  isActive        Boolean  @default(true)
+  copyCount       Int      @default(0)    // Total bets copied
+  totalProfit     Float    @default(0)    // Total profit from copying
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("copy_bet_settings")
+}
+
+// ==================== BETTING SYSTEM ====================
+
+model Bet {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  matchId         String
+  match           Match       @relation(fields: [matchId], references: [id])
+  
+  // Bet details
+  betType         String      // home, draw, away, over25, under25, btts_yes, btts_no
+  odds            Float
+  stake           Float
+  potentialWin    Float
+  
+  // Status
+  status          String      @default("pending") // pending, won, lost, void
+  result          String?
+  settledAt       DateTime?
+  
+  // Is this a simulated bet?
+  isSimulation    Boolean     @default(true)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([userId])
+  @@index([matchId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("bets")
+}
+
+model BetSlip {
+  id              String   @id @default(cuid())
+  userId          String
+  bets            String   // JSON array of bet IDs
+  totalOdds       Float
+  totalStake      Float
+  potentialWin    Float
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
+  
+  @@index([userId])
+  @@index([status])
+  @@map("bet_slips")
+}
+
+// ==================== SOCIAL FEATURES ====================
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("UserFollowers", fields: [followerId], references: [id])
+  followingId String
+  following   User     @relation("UserFollowing", fields: [followingId], references: [id])
+  createdAt   DateTime @default(now())
+  
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("follows")
+}
+
+model Like {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  tipId       String
+  tip         Tip      @relation(fields: [tipId], references: [id])
+  createdAt   DateTime @default(now())
+  
+  @@unique([userId, tipId])
+  @@index([tipId])
+  @@map("likes")
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  tipId       String
+  tip         Tip      @relation(fields: [tipId], references: [id])
+  content     String
+  createdAt   DateTime @default(now())
+  
+  @@index([tipId])
+  @@index([userId])
+  @@map("comments")
+}
+
+// ==================== TRANSACTIONS ====================
+
+model Transaction {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  type            String   // deposit, withdrawal, bet, win, subscription, commission
+  amount          Float
+  status          String   @default("completed") // pending, completed, failed
+  description     String?
+  referenceId     String?  // Related bet/subscription ID
+  paymentMethod   String?  // payfast, ozow, crypto, internal
+  createdAt       DateTime @default(now())
+  
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // bet_won, bet_lost, new_tip, subscription, etc.
+  title       String
+  message     String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ==================== LEADERBOARD ====================
+
+model LeaderboardEntry {
+  id          String   @id @default(cuid())
+  userId      String
+  period      String   // daily, weekly, monthly, all_time
+  profit      Float    @default(0)
+  winRate     Float    @default(0)
+  totalBets   Int      @default(0)
+  rank        Int?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  
+  @@unique([userId, period])
+  @@index([period, profit])
+  @@index([period, rank])
+  @@map("leaderboard_entries")
+}
+
+// ==================== NEW MODELS FOR UPGRADE ====================
+
+// API Keys for external integrations
+model APIKey {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  key         String    @unique
+  name        String
+  permissions String    // JSON array of permissions
+  lastUsed    DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  
+  @@index([key])
+  @@index([userId])
+  @@index([isActive])
+  @@map("api_keys")
+}
+
+// Payment transactions
+model Payment {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  type            String    // deposit, withdrawal, subscription, refund
+  amount          Float
+  currency        String    @default("ZAR")
+  status          String    @default("pending") // pending, completed, failed, refunded
+  paymentMethod   String    // payfast, ozow, crypto, internal
+  externalRef     String?   @unique
+  metadata        String?   // JSON
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([status])
+  @@index([paymentMethod])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+// Cache for scraped data
+model CachedData {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  data        String   // JSON
+  source      String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  
+  @@index([key])
+  @@index([expiresAt])
+  @@index([source])
+  @@map("cached_data")
+}
+
+// AI Model predictions history (for self-learning)
+model PredictionHistory {
+  id               String    @id @default(cuid())
+  matchId          String
+  modelVersion     String
+  homeWinProb      Float
+  drawProb         Float
+  awayWinProb      Float
+  predictedOutcome String
+  actualOutcome    String?
+  confidence       Float
+  isCorrect        Boolean?
+  createdAt        DateTime  @default(now())
+  settledAt        DateTime?
+  
+  @@index([matchId])
+  @@index([modelVersion])
+  @@index([isCorrect])
+  @@index([createdAt])
+  @@map("prediction_history")
+}
+
+// Referral system
+model Referral {
+  id          String   @id @default(cuid())
+  referrerId  String
+  referrer    User     @relation("Referrer", fields: [referrerId], references: [id])
+  referredId  String   @unique
+  referred    User     @relation("Referred", fields: [referredId], references: [id])
+  code        String   @unique
+  reward      Float    @default(50) // R50 credit
+  status      String   @default("pending") // pending, completed
+  createdAt   DateTime @default(now())
+  
+  @@index([referrerId])
+  @@index([code])
+  @@index([status])
+  @@map("referrals")
+}
+
+// Notification templates
+model NotificationTemplate {
+  id          String   @id @default(cuid())
+  type        String   @unique
+  title       String
+  template    String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  
+  @@index([type])
+  @@index([isActive])
+  @@map("notification_templates")
+}
+
+// System configuration
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+  
+  @@index([key])
+  @@map("system_configs")
+}
+
+// ==================== FANTASY SYSTEM ====================
+
+model Gameweek {
+  id            String   @id @default(cuid())
+  number        Int      @unique
+  name          String
+  deadline      DateTime
+  isActive      Boolean  @default(false)
+  isCurrent     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  playerStats   PlayerGameweekStat[]
+  
+  @@index([number])
+  @@index([isCurrent])
+  @@map("gameweeks")
+}
+
+model Player {
+  id            String   @id @default(cuid())
+  teamId        String
+  team          Team     @relation(fields: [teamId], references: [id])
+  
+  // Basic Info
+  name          String
+  position      String   // GK, DEF, MID, FWD
+  shirtNumber   Int
+  
+  // Fantasy Stats
+  price         Float    @default(0)      // Current price in millions
+  priceChange   Float    @default(0)      // Price change from start of season
+  form          Float    @default(0)      // Recent form (0-10)
+  totalPoints   Int      @default(0)      // Total fantasy points this season
+  
+  // Season Stats
+  goals         Int      @default(0)
+  assists       Int      @default(0)
+  cleanSheets   Int      @default(0)
+  yellowCards   Int      @default(0)
+  redCards      Int      @default(0)
+  minutesPlayed Int      @default(0)
+  
+  // Advanced Stats (xG/xA)
+  expectedGoals Float    @default(0)      // Expected Goals (xG)
+  expectedAssists Float  @default(0)      // Expected Assists (xA)
+  
+  // Ownership
+  ownershipPercent Float  @default(0)    // Percentage of teams that own this player
+  
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  gameweekStats PlayerGameweekStat[]
+  
+  @@index([teamId])
+  @@index([position])
+  @@index([isActive])
+  @@index([price])
+  @@index([form])
+  @@index([totalPoints])
+  @@index([ownershipPercent])
+  @@map("players")
+}
+
+model PlayerGameweekStat {
+  id            String   @id @default(cuid())
+  playerId      String
+  player        Player   @relation(fields: [playerId], references: [id])
+  gameweekId    String
+  gameweek      Gameweek @relation(fields: [gameweekId], references: [id])
+  
+  // Gameweek Performance
+  points        Int      @default(0)
+  goals         Int      @default(0)
+  assists       Int      @default(0)
+  cleanSheet    Boolean  @default(false)
+  yellowCard    Boolean  @default(false)
+  redCard       Boolean  @default(false)
+  minutesPlayed Int      @default(0)
+  
+  createdAt     DateTime @default(now())
+  
+  @@unique([playerId, gameweekId])
+  @@index([playerId])
+  @@index([gameweekId])
+  @@map("player_gameweek_stats")
+}
+
+// ==================== FANTASY TEAM MODELS ====================
+
+model FantasyTeam {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  
+  // Team Details
+  name          String
+  players       String   // JSON array of player IDs
+  
+  // Captain Selection
+  captainId     String
+  viceCaptainId String
+  
+  // Budget
+  budget        Float    @default(100.0)
+  remainingBudget Float  @default(100.0)
+  
+  // Points
+  totalPoints   Int      @default(0)
+  gameweekPoints Int     @default(0)
+  rank          Int?
+  overallRank   Int?
+  
+  // Transfer Management
+  freeTransfers Int      @default(1)
+  transfersUsed Int      @default(0)
+  hits          Int      @default(0)  // Points deductions for extra transfers
+  
+  // Team Value
+  teamValue     Float    @default(0)
+  
+  // Status
+  isActive      Boolean  @default(true)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  transfers     Transfer[]
+  leagueMembers FantasyLeagueMember[]
+  
+  @@unique([userId])  // One team per user
+  @@index([userId])
+  @@index([totalPoints])
+  @@index([overallRank])
+  @@map("fantasy_teams")
+}
+
+model Transfer {
+  id              String   @id @default(cuid())
+  fantasyTeamId   String
+  fantasyTeam     FantasyTeam @relation(fields: [fantasyTeamId], references: [id])
+  
+  // Transfer Details
+  playerInId      String
+  playerOutId     String
+  
+  // Gameweek
+  gameweekId      String
+  
+  // Cost
+  cost            Float    @default(0)  // Points cost for this transfer
+  priceDiff       Float    @default(0)  // Price difference between players
+  
+  // Status
+  status          String   @default("pending")  // pending, completed, cancelled
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([fantasyTeamId])
+  @@index([gameweekId])
+  @@index([status])
+  @@map("transfers")
+}
+
+model FantasyLeague {
+  id            String   @id @default(cuid())
+  
+  // League Details
+  name          String
+  code         String   @unique  // Join code
+  description   String?
+  
+  // Creator
+  creatorId     String
+  
+  // Settings
+  isPublic      Boolean  @default(false)
+  maxMembers    Int      @default(20)
+  prizePool     Float    @default(0)
+  
+  // Status
+  isActive      Boolean  @default(true)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  members       FantasyLeagueMember[]
+  
+  @@index([code])
+  @@index([isPublic])
+  @@index([creatorId])
+  @@map("fantasy_leagues")
+}
+
+model FantasyLeagueMember {
+  id              String   @id @default(cuid())
+  leagueId        String
+  league          FantasyLeague @relation(fields: [leagueId], references: [id])
+  
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  
+  fantasyTeamId   String
+  fantasyTeam     FantasyTeam @relation(fields: [fantasyTeamId], references: [id])
+  
+  // Member stats
+  rank            Int?
+  lastRank        Int?
+  gameweekPoints  Int      @default(0)
+  totalPoints     Int      @default(0)
+  
+  // Role
+  role            String   @default("member")  // member, admin
+  
+  joinedAt        DateTime @default(now())
+  
+  @@unique([leagueId, userId])
+  @@unique([leagueId, fantasyTeamId])
+  @@index([leagueId])
+  @@index([userId])
+  @@index([fantasyTeamId])
+  @@map("fantasy_league_members")
+}

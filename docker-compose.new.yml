@@ -1,0 +1,48 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: 43v3r-redis-new
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data_new:/data
+
+  fastify-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: 43v3r-fastify-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    depends_on:
+      - redis
+
+  python-ai-engine:
+    build:
+      context: ./ai-engine-python
+      dockerfile: Dockerfile
+    container_name: 43v3r-python-ai-engine
+    restart: unless-stopped
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-54332}
+      - DB_NAME=${DB_NAME:-postgres}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+
+volumes:
+  redis_data_new:

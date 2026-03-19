@@ -1,0 +1,17 @@
+{
+  "name": "43v3r-telegram-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Telegram Bot Service for 43V3R BET AI - Posts value bets, tips, and results",
+  "scripts": {
+    "dev": "bun --hot index.ts",
+    "start": "bun index.ts",
+    "db:generate": "bunx prisma generate",
+    "db:push": "bunx prisma db push",
+    "db:studio": "bunx prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "prisma": "^6.1.0"
+  }
+}

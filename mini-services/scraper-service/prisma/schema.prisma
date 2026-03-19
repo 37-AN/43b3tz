@@ -1,0 +1,119 @@
+// This schema references the main app's database
+// It should be kept in sync with /home/z/my-project/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Only include models used by scraper service
+// For full schema, see main app
+
+model League {
+  id          String   @id @default(cuid())
+  name        String
+  country     String
+  logo        String?
+  isActive    Boolean  @default(true)
+  matches     Match[]
+  createdAt   DateTime @default(now())
+  
+  @@index([country])
+  @@index([isActive])
+  @@map("leagues")
+}
+
+model Team {
+  id            String   @id @default(cuid())
+  name          String
+  logo          String?
+  country       String?
+  leagueId      String?
+  form          String?
+  goalsScored   Int      @default(0)
+  goalsConceded Int      @default(0)
+  createdAt     DateTime @default(now())
+  
+  homeMatches Match[]  @relation("HomeTeam")
+  awayMatches Match[]  @relation("AwayTeam")
+  
+  @@index([name])
+  @@index([leagueId])
+  @@map("teams")
+}
+
+model Match {
+  id              String      @id @default(cuid())
+  leagueId        String
+  league          League      @relation(fields: [leagueId], references: [id])
+  homeTeamId      String
+  homeTeam        Team        @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId      String
+  awayTeam        Team        @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  kickoffTime     DateTime
+  status          String      @default("scheduled")
+  homeScore       Int?
+  awayScore       Int?
+  minute          Int?
+  
+  odds           Odds?
+  
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  
+  @@index([kickoffTime])
+  @@index([status])
+  @@index([leagueId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@map("matches")
+}
+
+model Odds {
+  id              String   @id @default(cuid())
+  matchId         String   @unique
+  match           Match    @relation(fields: [matchId], references: [id])
+  
+  homeWin         Float
+  draw            Float
+  awayWin         Float
+  
+  over25          Float?
+  under25         Float?
+  
+  bttsYes         Float?
+  bttsNo          Float?
+  
+  homeDraw        Float?
+  homeAway        Float?
+  drawAway        Float?
+  
+  bookmaker       String   @default("aggregate")
+  
+  homeWinOpen     Float?
+  drawOpen        Float?
+  awayWinOpen     Float?
+  
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  
+  @@index([matchId])
+  @@map("odds")
+}
+
+model OddsHistory {
+  id          String   @id @default(cuid())
+  matchId     String
+  homeWin     Float
+  draw        Float
+  awayWin     Float
+  bookmaker   String
+  recordedAt  DateTime @default(now())
+  
+  @@index([matchId, recordedAt])
+  @@map("odds_history")
+}

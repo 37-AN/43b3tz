@@ -1,0 +1,59 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20.x
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    - name: Install Node dependencies
+      run: |
+        cd backend
+        npm ci
+
+    - name: Install Python dependencies
+      run: |
+        cd ai-engine-python
+        pip install -r requirements.txt
+        pip install pytest
+
+    - name: Run Backend Tests
+      run: |
+        cd backend
+        # npm run test # Uncomment when tests are fully implemented
+
+    - name: Run Python Tests
+      run: |
+        cd ai-engine-python
+        pytest tests/
+
+    - name: Build Docker Images
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        docker compose -f docker-compose.prod.yml build
+
+    - name: Deploy Placeholder
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        echo "Successfully built images. Ready to trigger VPS deployment webhook."
+        # curl -X POST https://my-vps-ip/webhook/deploy

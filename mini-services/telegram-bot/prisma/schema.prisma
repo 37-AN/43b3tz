@@ -1,0 +1,261 @@
+// 43V3R BET AI - Telegram Bot Service Prisma Schema
+// References the main application database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../../prisma/dev.db"
+}
+
+// Minimal models needed for the telegram bot service
+// These are references to the main database tables
+
+model Match {
+  id              String      @id @default(cuid())
+  leagueId        String
+  homeTeamId      String
+  awayTeamId      String
+  kickoffTime     DateTime
+  status          String      @default("scheduled")
+  homeScore       Int?
+  awayScore       Int?
+  minute          Int?
+  odds           Odds?
+  predictions    Prediction[]
+  bets           Bet[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  
+  @@index([kickoffTime])
+  @@index([status])
+  @@map("matches")
+}
+
+model Team {
+  id            String   @id @default(cuid())
+  name          String
+  logo          String?
+  country       String?
+  leagueId      String?
+  form          String?
+  goalsScored   Int      @default(0)
+  goalsConceded Int      @default(0)
+  createdAt     DateTime @default(now())
+  
+  homeMatches Match[]  @relation("HomeTeam")
+  awayMatches Match[]  @relation("AwayTeam")
+  players     Player[]
+  
+  @@index([name])
+  @@map("teams")
+}
+
+model League {
+  id          String   @id @default(cuid())
+  name        String
+  country     String
+  logo        String?
+  isActive    Boolean  @default(true)
+  matches     Match[]
+  createdAt   DateTime @default(now())
+  
+  @@map("leagues")
+}
+
+model Odds {
+  id              String   @id @default(cuid())
+  matchId         String   @unique
+  homeWin         Float
+  draw            Float
+  awayWin         Float
+  over25          Float?
+  under25         Float?
+  bttsYes         Float?
+  bttsNo          Float?
+  homeDraw        Float?
+  homeAway        Float?
+  drawAway        Float?
+  bookmaker       String   @default("aggregate")
+  homeWinOpen     Float?
+  drawOpen        Float?
+  awayWinOpen     Float?
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  
+  @@map("odds")
+}
+
+model Prediction {
+  id              String   @id @default(cuid())
+  matchId         String
+  userId          String?
+  homeWinProb     Float
+  drawProb        Float
+  awayWinProb     Float
+  prediction      String
+  confidence      Float
+  isValueBet      Boolean  @default(false)
+  edge            Float    @default(0)
+  kellyFraction   Float    @default(0)
+  result          String?
+  settledAt       DateTime?
+  isPremium       Boolean  @default(false)
+  price           Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([matchId])
+  @@index([isValueBet])
+  @@index([result])
+  @@map("predictions")
+}
+
+model Bet {
+  id              String      @id @default(cuid())
+  userId          String
+  matchId         String
+  betType         String
+  odds            Float
+  stake           Float
+  potentialWin    Float
+  status          String      @default("pending")
+  result          String?
+  settledAt       DateTime?
+  isSimulation    Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([matchId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("bets")
+}
+
+model Player {
+  id            String   @id @default(cuid())
+  teamId        String
+  name          String
+  position      String
+  shirtNumber   Int
+  price         Float    @default(0)
+  priceChange   Float    @default(0)
+  form          Float    @default(0)
+  totalPoints   Int      @default(0)
+  goals         Int      @default(0)
+  assists       Int      @default(0)
+  cleanSheets   Int      @default(0)
+  yellowCards   Int      @default(0)
+  redCards      Int      @default(0)
+  minutesPlayed Int      @default(0)
+  expectedGoals Float    @default(0)
+  expectedAssists Float  @default(0)
+  ownershipPercent Float  @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([teamId])
+  @@index([position])
+  @@index([form])
+  @@map("players")
+}
+
+model Gameweek {
+  id            String   @id @default(cuid())
+  number        Int      @unique
+  name          String
+  deadline      DateTime
+  isActive      Boolean  @default(false)
+  isCurrent     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([number])
+  @@index([isCurrent])
+  @@map("gameweeks")
+}
+
+model PlayerGameweekStat {
+  id            String   @id @default(cuid())
+  playerId      String
+  gameweekId    String
+  points        Int      @default(0)
+  goals         Int      @default(0)
+  assists       Int      @default(0)
+  cleanSheet    Boolean  @default(false)
+  yellowCard    Boolean  @default(false)
+  redCard       Boolean  @default(false)
+  minutesPlayed Int      @default(0)
+  createdAt     DateTime @default(now())
+  
+  @@unique([playerId, gameweekId])
+  @@map("player_gameweek_stats")
+}
+
+model PredictionHistory {
+  id               String    @id @default(cuid())
+  matchId          String
+  modelVersion     String
+  homeWinProb      Float
+  drawProb         Float
+  awayWinProb      Float
+  predictedOutcome String
+  actualOutcome    String?
+  confidence       Float
+  isCorrect        Boolean?
+  createdAt        DateTime  @default(now())
+  settledAt        DateTime?
+  
+  @@index([matchId])
+  @@index([isCorrect])
+  @@map("prediction_history")
+}
+
+model Tipster {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  displayName     String
+  bio             String?
+  avatar          String?
+  isVerified      Boolean  @default(false)
+  isFeatured      Boolean  @default(false)
+  totalTips       Int      @default(0)
+  wins            Int      @default(0)
+  losses          Int      @default(0)
+  roi             Float    @default(0)
+  yield           Float    @default(0)
+  winRate         Float    @default(0)
+  avgOdds         Float    @default(0)
+  profit          Float    @default(0)
+  monthlyPrice    Float    @default(0)
+  weeklyPrice     Float    @default(0)
+  singleTipPrice  Float    @default(0)
+  followersCount  Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("tipsters")
+}
+
+model Tip {
+  id              String      @id @default(cuid())
+  tipsterId       String
+  matchId         String
+  prediction      String
+  odds            Float
+  stake           Float       @default(1)
+  reasoning       String?
+  isPremium       Boolean     @default(false)
+  isFree          Boolean     @default(false)
+  result          String?
+  settledAt       DateTime?
+  createdAt       DateTime    @default(now())
+  
+  @@index([tipsterId])
+  @@index([matchId])
+  @@index([result])
+  @@map("tips")
+}
