@@ -2,11 +2,11 @@
   "name": "43v3r-fastify-backend",
   "version": "1.0.0",
   "description": "Fastify Backend API for 43V3R Bet",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts"
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
@@ -14,10 +14,14 @@
     "@fastify/jwt": "^10.0.0",
     "@fastify/rate-limit": "^10.3.0",
     "@supabase/supabase-js": "^2.45.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/pg": "^8.18.0",
     "bullmq": "^5.71.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.0.0",
     "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.20.0",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
