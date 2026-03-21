@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "claude-mem": {
+      "command": "bun",
+      "args": [
+        "/Users/ccladysmith/.gemini/antigravity/memory/node_modules/claude-mem/plugin/scripts/mcp-server.cjs"
+      ]
+    }
+  }
+}
